@@ -34,6 +34,8 @@ The admin view includes pricing settings for each material and a profit margin. 
 
 If your database was created before pricing settings were added, run `supabase/migrations/003_add_pricing_settings.sql` once in the Supabase SQL Editor.
 
+For existing databases, also run `supabase/migrations/004_lock_down_order_privacy.sql` to verify that customers can only access their own requests. Admins can still access every request from **Admin view**.
+
 ## Security and storage
 
 The browser only receives Supabase's publishable key. Row Level Security keeps customer orders private, while the admin can see all requests. The `print-files` bucket is private and downloads use short-lived signed links.

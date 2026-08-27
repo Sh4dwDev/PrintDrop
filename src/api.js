@@ -64,7 +64,11 @@ export async function request(path, options = {}) {
     return { order: mapOrder(data) };
   }
   if ((path === '/orders' || path === '/admin/orders') && !options.method) {
-    const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+    const user = await currentUser();
+    if (path === '/admin/orders' && user.role !== 'admin') throw new Error('Admin access required.');
+    let query = supabase.from('orders').select('*');
+    if (path === '/orders') query = query.eq('user_id', user.id);
+    const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
     return { orders: data.map(mapOrder) };
   }
