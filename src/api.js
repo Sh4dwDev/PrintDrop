@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 function mapOrder(row) {
-  return { id: row.id, userId: row.user_id, userName: row.user_name, userEmail: row.user_email, name: row.name, link: row.model_link, material: row.material, colour: row.colour, quantity: row.quantity, notes: row.notes, fileName: row.file_name, filePath: row.file_path, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, userId: row.user_id, userName: row.user_name, userEmail: row.user_email, name: row.name, link: row.model_link, material: row.material, colour: row.colour, quantity: row.quantity, notes: row.notes, fileName: row.file_name, filePath: row.file_path, estimatedWeightG: row.estimated_weight_g, quotedPriceNok: row.quoted_price_nok, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 async function currentUser() {
@@ -47,8 +47,10 @@ export async function request(path, options = {}) {
     return { orders: data.map(mapOrder) };
   }
   if (path.startsWith('/admin/orders/') && options.method === 'PATCH') {
-    const id = path.split('/').pop(); const { status } = JSON.parse(options.body);
-    const { data, error } = await supabase.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    const id = path.split('/').pop(); const changes = JSON.parse(options.body); const update = { updated_at: new Date().toISOString() };
+    if (changes.status !== undefined) update.status = changes.status;
+    if (changes.estimatedWeightG !== undefined) update.estimated_weight_g = changes.estimatedWeightG || null;
+    const { data, error } = await supabase.from('orders').update(update).eq('id', id).select().single();
     if (error) throw error;
     return { order: mapOrder(data) };
   }

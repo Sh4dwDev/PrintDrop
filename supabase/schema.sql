@@ -20,6 +20,8 @@ create table public.orders (
   notes text check (char_length(notes) <= 2000),
   file_name text,
   file_path text,
+  estimated_weight_g numeric(10,2) check (estimated_weight_g is null or estimated_weight_g > 0),
+  quoted_price_nok numeric(10,2) generated always as (round(estimated_weight_g * 0.30, 2)) stored,
   status text not null default 'Reviewing' check (status in ('Reviewing', 'Quoted', 'Printing', 'Ready', 'Completed', 'Declined')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

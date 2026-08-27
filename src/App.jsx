@@ -82,13 +82,24 @@ function NewOrder({ onCreated }) {
   </form>;
 }
 
+function PriceEditor({ order, onUpdate }) {
+  return <label className="weight-editor">
+    <span className="sr-only">Estimated weight in grams</span>
+    <span className="weight-input"><input type="number" min="0.1" step="0.1" defaultValue={order.estimatedWeightG || ''} placeholder="0" onBlur={event => {
+      const value = event.target.value ? Number(event.target.value) : null;
+      if (value !== Number(order.estimatedWeightG || 0)) onUpdate(order.id, { estimatedWeightG: value });
+    }} /><small>g</small></span>
+  </label>;
+}
+
 function Orders({ orders, admin, onUpdate, title = 'Recent orders' }) {
   if (!orders.length) return <section className="orders-panel"><div className="section-head"><h2>{title}</h2></div><div className="empty"><FileBox size={28} /><strong>No print requests yet</strong><span>Your submitted orders will show up here.</span></div></section>;
-  return <section className="orders-panel"><div className="section-head"><h2>{title}</h2><span>{orders.length} {orders.length === 1 ? 'request' : 'requests'}</span></div><div className="order-list">
-    <div className="order-row order-head"><span>Order</span><span>Print</span>{admin && <span>Customer</span>}<span>Material</span><span>Status</span><span>Updated</span><span /></div>
+  return <section className="orders-panel"><div className="section-head"><h2>{title}</h2><div className="section-meta">{admin && <strong>300 kr/kg · enter sliced weight</strong>}<span>{orders.length} {orders.length === 1 ? 'request' : 'requests'}</span></div></div><div className="order-list">
+    <div className={`order-row order-head ${admin ? 'admin-row' : ''}`}><span>Order</span><span>Print</span>{admin && <span>Customer</span>}<span>Material</span>{admin && <span>Weight</span>}<span>Price</span><span>Status</span><span>Updated</span><span /></div>
     {orders.map(order => { const Icon = statusIcons[order.status] || Clock3; return <div className={`order-row ${admin ? 'admin-row' : ''}`} key={order.id}>
       <span className="order-id"><FileBox size={18} />#{order.id.slice(-6).toUpperCase()}</span><span><strong>{order.name}</strong><small>{order.colour} · Qty {order.quantity}</small></span>{admin && <span><strong>{order.userName}</strong><small>{order.userEmail}</small></span>}<span>{order.material}</span>
-      <span>{admin ? <select className={`status ${order.status.toLowerCase()}`} value={order.status} onChange={e => onUpdate(order.id, e.target.value)}>{STATUSES.map(x => <option key={x}>{x}</option>)}</select> : <span className={`status ${order.status.toLowerCase()}`}><Icon size={15} />{order.status}</span>}</span>
+      {admin && <span><PriceEditor order={order} onUpdate={onUpdate} /></span>}<span className="price">{order.quotedPriceNok ? `${Number(order.quotedPriceNok).toFixed(2)} kr` : '—'}</span>
+      <span>{admin ? <select className={`status ${order.status.toLowerCase()}`} value={order.status} onChange={e => onUpdate(order.id, { status: e.target.value })}>{STATUSES.map(x => <option key={x}>{x}</option>)}</select> : <span className={`status ${order.status.toLowerCase()}`}><Icon size={15} />{order.status}</span>}</span>
       <span>{new Date(order.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span><span className="actions">{order.fileName && <button title="Download model file" onClick={() => downloadOrderFile(order)}><Download size={18} /></button>}{order.link && <a title="Open model link" href={order.link} target="_blank" rel="noreferrer"><ChevronRight size={19} /></a>}</span>
     </div>; })}</div></section>;
 }
@@ -99,7 +110,7 @@ export function App() {
   useEffect(() => { if (!isConfigured) { setLoading(false); return; } request('/auth/me').then(x => setUser(x.user)).catch(() => {}).finally(() => setLoading(false)); }, []);
   useEffect(() => { loadOrders(); }, [user, active]);
   async function logout() { await request('/auth/logout'); setUser(null); }
-  async function update(id, status) { await request(`/admin/orders/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); loadOrders(); }
+  async function update(id, changes) { await request(`/admin/orders/${id}`, { method: 'PATCH', body: JSON.stringify(changes) }); loadOrders(); }
   if (!isConfigured) return <main className="setup-page"><Logo /><section><h1>Connect Supabase</h1><p>Add these two environment variables to run PrintDrop:</p><code>VITE_SUPABASE_URL</code><code>VITE_SUPABASE_PUBLISHABLE_KEY</code><p className="setup-note">Then run <strong>supabase/schema.sql</strong> in your Supabase SQL Editor.</p></section></main>;
   if (loading) return <div className="loader"><Printer className="spin" /> Loading PrintDrop…</div>;
   if (!user) return <Auth onAuth={setUser} />;
