@@ -5,7 +5,7 @@ function mapOrder(row) {
 }
 
 function mapPricing(row) {
-  return { plaCostPerKg: row.pla_cost_per_kg, petgCostPerKg: row.petg_cost_per_kg, tpuCostPerKg: row.tpu_cost_per_kg, absCostPerKg: row.abs_cost_per_kg, profitMarginPercent: row.profit_margin_percent, defaultInfillPercent: row.default_infill_percent };
+  return { plaCostPerKg: row.pla_cost_per_kg, petgCostPerKg: row.petg_cost_per_kg, tpuCostPerKg: row.tpu_cost_per_kg, absCostPerKg: row.abs_cost_per_kg, profitMarginPercent: row.profit_margin_percent, defaultInfillPercent: row.default_infill_percent, availableMaterials: row.available_materials || ['PLA', 'PETG', 'TPU', 'ABS'], availableColours: row.available_colours || ['Black', 'White', 'Grey', 'Orange', 'Blue', 'Green', 'Other'] };
 }
 
 async function currentUser() {
@@ -42,7 +42,7 @@ export async function request(path, options = {}) {
     const update = {
       pla_cost_per_kg: Number(changes.plaCostPerKg), petg_cost_per_kg: Number(changes.petgCostPerKg),
       tpu_cost_per_kg: Number(changes.tpuCostPerKg), abs_cost_per_kg: Number(changes.absCostPerKg),
-      profit_margin_percent: Number(changes.profitMarginPercent), default_infill_percent: Number(changes.defaultInfillPercent), updated_at: new Date().toISOString()
+      profit_margin_percent: Number(changes.profitMarginPercent), default_infill_percent: Number(changes.defaultInfillPercent), available_materials: changes.availableMaterials, available_colours: changes.availableColours, updated_at: new Date().toISOString()
     };
     const { data, error } = await supabase.from('pricing_settings').update(update).eq('id', true).select().single();
     if (error) throw error;

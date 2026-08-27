@@ -15,6 +15,8 @@ create table public.pricing_settings (
   abs_cost_per_kg numeric(10,2) not null default 300 check (abs_cost_per_kg >= 0),
   profit_margin_percent numeric(7,2) not null default 15 check (profit_margin_percent between 0 and 1000),
   default_infill_percent numeric(5,2) not null default 15 check (default_infill_percent between 0 and 100),
+  available_materials text[] not null default array['PLA', 'PETG', 'TPU', 'ABS'] check (cardinality(available_materials) > 0),
+  available_colours text[] not null default array['Black', 'White', 'Grey', 'Orange', 'Blue', 'Green', 'Other'] check (cardinality(available_colours) > 0),
   updated_at timestamptz not null default now()
 );
 
@@ -108,7 +110,11 @@ for select to authenticated using ((select auth.uid()) = id or (select public.is
 create policy "customers view own orders, admins view all" on public.orders
 for select to authenticated using ((select auth.uid()) = user_id or (select public.is_admin()));
 create policy "customers create their own orders" on public.orders
-for insert to authenticated with check ((select auth.uid()) = user_id);
+for insert to authenticated with check (
+  (select auth.uid()) = user_id
+  and (select material = any(available_materials) from public.pricing_settings where id = true)
+  and (select colour = any(available_colours) from public.pricing_settings where id = true)
+);
 create policy "admins update orders" on public.orders
 for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 create policy "signed in users view pricing" on public.pricing_settings

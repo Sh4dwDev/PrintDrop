@@ -58,6 +58,11 @@ function NewOrder({ onCreated, pricing }) {
   const emptyForm = { name: '', link: '', material: 'PLA', colour: 'Black', quantity: 1, estimatedWeightG: '', weightSource: '', notes: '' };
   const [form, setForm] = useState(emptyForm);
   const [file, setFile] = useState(null); const [weightHint, setWeightHint] = useState('Enter the total sliced weight, or upload an STL/OBJ for an estimate.'); const [detectedUnitWeight, setDetectedUnitWeight] = useState(null); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
+  const availableMaterials = pricing?.availableMaterials?.length ? pricing.availableMaterials : MATERIALS;
+  const availableColours = pricing?.availableColours?.length ? pricing.availableColours : COLOURS;
+  useEffect(() => {
+    setForm(current => ({ ...current, material: availableMaterials.includes(current.material) ? current.material : availableMaterials[0], colour: availableColours.includes(current.colour) ? current.colour : availableColours[0] }));
+  }, [pricing]);
   async function estimateFile(modelFile, material, quantity) {
     try {
       const unitWeight = await estimateModelWeight(modelFile, material, pricing?.defaultInfillPercent ?? 15);
@@ -105,8 +110,8 @@ function NewOrder({ onCreated, pricing }) {
     </div>
     <div className="fields-row">
       <label>Print name<input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Desk organizer" /></label>
-      <label>Material<select value={form.material} onChange={e => changeMaterial(e.target.value)}>{MATERIALS.map(x => <option key={x}>{x}</option>)}</select></label>
-      <label>Colour<select value={form.colour} onChange={e => setForm({ ...form, colour: e.target.value })}>{COLOURS.map(x => <option key={x}>{x}</option>)}</select></label>
+      <label>Material<select value={form.material} onChange={e => changeMaterial(e.target.value)}>{availableMaterials.map(x => <option key={x}>{x}</option>)}</select></label>
+      <label>Colour<select value={form.colour} onChange={e => setForm({ ...form, colour: e.target.value })}>{availableColours.map(x => <option key={x}>{x}</option>)}</select></label>
       <label className="quantity">Quantity<input type="number" min="1" max="50" value={form.quantity} onChange={e => changeQuantity(e.target.value)} /></label>
     </div>
     <div className="weight-quote"><label>Total estimated weight<input type="number" min="0.1" step="0.1" value={form.estimatedWeightG} onChange={e => { setDetectedUnitWeight(null); setForm({ ...form, estimatedWeightG: e.target.value, weightSource: 'customer' }); }} placeholder="e.g. 80" /><small>{weightHint}</small></label><div><small>Estimated customer price</small><strong>{form.estimatedWeightG && pricing ? `${(Number(form.estimatedWeightG) / 1000 * Number(pricing[`${form.material.toLowerCase()}CostPerKg`]) * (1 + Number(pricing.profitMarginPercent) / 100)).toFixed(2)} kr` : '—'}</strong></div></div>
@@ -134,9 +139,11 @@ function PricingSettings({ pricing, onSave }) {
   const petgCost = 80 / 1000 * Number(form.petgCostPerKg || 0);
   const petgProfit = petgCost * Number(form.profitMarginPercent || 0) / 100;
   function change(key, value) { setForm(current => ({ ...current, [key]: value })); }
+  function toggleStock(key, item) { setForm(current => ({ ...current, [key]: current[key].includes(item) ? current[key].filter(value => value !== item) : [...current[key], item] })); }
   async function submit(event) {
     event.preventDefault(); setMessage(''); setBusy(true);
-    try { await onSave(form); setMessage('Pricing settings saved.'); }
+    if (!form.availableMaterials.length || !form.availableColours.length) { setMessage('Keep at least one material and one colour in stock.'); setBusy(false); return; }
+    try { await onSave(form); setMessage('Pricing and inventory saved.'); }
     catch (error) { setMessage(error.message); }
     finally { setBusy(false); }
   }
@@ -148,8 +155,9 @@ function PricingSettings({ pricing, onSave }) {
       <label>Profit margin<input required type="number" min="0" max="1000" step="0.1" value={form.profitMarginPercent} onChange={event => change('profitMarginPercent', event.target.value)} /><small>% added to material cost</small></label>
       <label>Default infill<input required type="number" min="0" max="100" step="1" value={form.defaultInfillPercent} onChange={event => change('defaultInfillPercent', event.target.value)} /><small>% for file estimates</small></label>
     </div>
+    <div className="inventory-settings"><div><strong>Materials in stock</strong><span>{MATERIALS.map(material => <label className="stock-toggle" key={material}><input type="checkbox" checked={form.availableMaterials.includes(material)} onChange={() => toggleStock('availableMaterials', material)} /><span>{material}</span></label>)}</span></div><div><strong>Colours in stock</strong><span>{COLOURS.map(colour => <label className="stock-toggle" key={colour}><input type="checkbox" checked={form.availableColours.includes(colour)} onChange={() => toggleStock('availableColours', colour)} /><span>{colour}</span></label>)}</span></div></div>
     <div className="price-example"><div><small>Example · 80 g PETG</small><strong>{petgCost.toFixed(2)} kr material + {petgProfit.toFixed(2)} kr profit</strong></div><span>{(petgCost + petgProfit).toFixed(2)} kr</span></div>
-    <div className="pricing-actions">{message && <span className={message.includes('saved') ? 'saved' : 'save-error'}>{message}</span>}<button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save pricing'}<Save size={17} /></button></div>
+    <div className="pricing-actions">{message && <span className={message.includes('saved') ? 'saved' : 'save-error'}>{message}</span>}<button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save pricing & stock'}<Save size={17} /></button></div>
   </form>;
 }
 

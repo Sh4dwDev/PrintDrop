@@ -34,6 +34,8 @@ The admin view includes pricing settings for each material and a profit margin. 
 
 For an existing database, run `supabase/migrations/005_complete_pricing_and_weight.sql` once in the Supabase SQL Editor. It includes the earlier pricing and privacy upgrades too.
 
+If you already ran migration 005 before stock controls were added, run `supabase/migrations/006_add_stock_controls.sql` once. Admins can then toggle available materials and colours; customers only see in-stock choices.
+
 Customers can enter the total sliced weight themselves. STL and OBJ uploads get a rough automatic estimate using model volume, material density, and the admin's default infill setting. The estimate remains editable because final weight depends on slicer settings. Direct STL/OBJ links are estimated when the source website permits browser access; ordinary Printables, Thingiverse, and MakerWorld pages cannot expose a reliable sliced weight.
 
 ## Security and storage
