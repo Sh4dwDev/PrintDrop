@@ -55,9 +55,9 @@ function Sidebar({ active, setActive, user, logout, open, close }) {
 }
 
 function NewOrder({ onCreated, pricing }) {
-  const emptyForm = { name: '', link: '', material: 'PLA', colour: 'Black', quantity: 1, estimatedWeightG: '', weightSource: '', notes: '' };
+  const emptyForm = { name: '', link: '', material: 'PLA', colour: 'Black', quantity: 1, estimatedWeightG: '', weightSource: '', printTimeHours: '', printTimeMinutes: '', notes: '' };
   const [form, setForm] = useState(emptyForm);
-  const [file, setFile] = useState(null); const [weightHint, setWeightHint] = useState('Enter the total sliced weight, or upload an STL/OBJ for an estimate.'); const [detectedUnitWeight, setDetectedUnitWeight] = useState(null); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
+  const [file, setFile] = useState(null); const [weightHint, setWeightHint] = useState('Enter the sliced weight for one print, or upload an STL/OBJ for an estimate.'); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
   const availableMaterials = pricing?.availableMaterials?.length ? pricing.availableMaterials : MATERIALS;
   const availableColours = pricing?.availableColours?.length ? pricing.availableColours : COLOURS;
   useEffect(() => {
@@ -66,14 +66,13 @@ function NewOrder({ onCreated, pricing }) {
   async function estimateFile(modelFile, material, quantity) {
     try {
       const unitWeight = await estimateModelWeight(modelFile, material, pricing?.defaultInfillPercent ?? 15);
-      setDetectedUnitWeight(unitWeight);
-      setForm(current => ({ ...current, estimatedWeightG: (unitWeight * Number(quantity || 1)).toFixed(1), weightSource: 'file_estimate' }));
+      setForm(current => ({ ...current, estimatedWeightG: unitWeight.toFixed(1), weightSource: 'file_estimate' }));
       setWeightHint(`Estimated from model geometry at ${pricing?.defaultInfillPercent ?? 15}% infill. You can correct it.`);
-    } catch (error) { setDetectedUnitWeight(null); setWeightHint(error.message); }
+    } catch (error) { setWeightHint(error.message); }
   }
   async function chooseFile(modelFile) {
     setFile(modelFile);
-    if (!modelFile) { setDetectedUnitWeight(null); setWeightHint('Enter the total sliced weight, or upload an STL/OBJ for an estimate.'); return; }
+    if (!modelFile) { setWeightHint('Enter the sliced weight for one print, or upload an STL/OBJ for an estimate.'); return; }
     await estimateFile(modelFile, form.material, form.quantity);
   }
   async function changeMaterial(material) {
@@ -81,7 +80,7 @@ function NewOrder({ onCreated, pricing }) {
     if (file) await estimateFile(file, material, form.quantity);
   }
   function changeQuantity(quantity) {
-    setForm(current => ({ ...current, quantity, ...(detectedUnitWeight && current.weightSource === 'file_estimate' ? { estimatedWeightG: (detectedUnitWeight * Number(quantity || 1)).toFixed(1) } : {}) }));
+    setForm(current => ({ ...current, quantity }));
   }
   async function detectDirectLink() {
     const extension = form.link.split(/[?#]/)[0].split('.').pop()?.toLowerCase();
@@ -93,12 +92,18 @@ function NewOrder({ onCreated, pricing }) {
       await estimateFile(modelFile, form.material, form.quantity);
     } catch { setWeightHint('That website blocks automatic file reading. Enter the sliced weight manually.'); }
   }
+  const quantity = Number(form.quantity || 1);
+  const materialRate = Number(pricing?.[`${form.material.toLowerCase()}CostPerKg`] || 0);
+  const materialTotal = Number(form.estimatedWeightG || 0) * quantity / 1000 * materialRate;
+  const printHours = Number(form.printTimeHours || 0) + Number(form.printTimeMinutes || 0) / 60;
+  const machineTotal = printHours * quantity * Number(pricing?.machineRatePerHour || 0);
+  const estimatedPrice = (materialTotal + machineTotal) * (1 + Number(pricing?.profitMarginPercent || 0) / 100);
   async function submit(event) {
     event.preventDefault(); setMessage('');
     if (!file && !form.link) return setMessage('Add a file or paste a model link.');
     const body = new FormData(); Object.entries(form).forEach(([key, value]) => body.append(key, value)); if (file) body.append('model', file);
     setBusy(true);
-    try { await request('/orders', { method: 'POST', body }); setForm(emptyForm); setFile(null); setDetectedUnitWeight(null); setWeightHint('Enter the total sliced weight, or upload an STL/OBJ for an estimate.'); setMessage('Request sent!'); onCreated(); }
+    try { await request('/orders', { method: 'POST', body }); setForm(emptyForm); setFile(null); setWeightHint('Enter the sliced weight for one print, or upload an STL/OBJ for an estimate.'); setMessage('Request sent!'); onCreated(); }
     catch (err) { setMessage(err.message); } finally { setBusy(false); }
   }
   return <form className="request-panel" onSubmit={submit}>
@@ -114,7 +119,7 @@ function NewOrder({ onCreated, pricing }) {
       <label>Colour<select value={form.colour} onChange={e => setForm({ ...form, colour: e.target.value })}>{availableColours.map(x => <option key={x}>{x}</option>)}</select></label>
       <label className="quantity">Quantity<input type="number" min="1" max="50" value={form.quantity} onChange={e => changeQuantity(e.target.value)} /></label>
     </div>
-    <div className="weight-quote"><label>Total estimated weight<input type="number" min="0.1" step="0.1" value={form.estimatedWeightG} onChange={e => { setDetectedUnitWeight(null); setForm({ ...form, estimatedWeightG: e.target.value, weightSource: 'customer' }); }} placeholder="e.g. 80" /><small>{weightHint}</small></label><div><small>Estimated customer price</small><strong>{form.estimatedWeightG && pricing ? `${(Number(form.estimatedWeightG) / 1000 * Number(pricing[`${form.material.toLowerCase()}CostPerKg`]) * (1 + Number(pricing.profitMarginPercent) / 100)).toFixed(2)} kr` : '—'}</strong></div></div>
+    <div className="weight-quote"><label>Estimated weight per print<input type="number" min="0.1" step="0.1" value={form.estimatedWeightG} onChange={e => setForm({ ...form, estimatedWeightG: e.target.value, weightSource: 'customer' })} placeholder="e.g. 80" /><small>{weightHint}</small></label><div className="time-field"><strong>Print time per print</strong><span><label>Hours<input type="number" min="0" step="1" value={form.printTimeHours} onChange={e => setForm({ ...form, printTimeHours: e.target.value })} placeholder="2" /></label><label>Minutes<input type="number" min="0" max="59" step="1" value={form.printTimeMinutes} onChange={e => setForm({ ...form, printTimeMinutes: e.target.value })} placeholder="30" /></label></span><small>Copy this from your slicer if known.</small></div><div className="quote-preview"><small>Estimated price · {form.quantity || 1}× print</small><strong>{pricing && (form.estimatedWeightG || printHours) ? `${estimatedPrice.toFixed(2)} kr` : '—'}</strong><small>{materialTotal.toFixed(2)} material + {machineTotal.toFixed(2)} time</small></div></div>
     <div className="notes-submit"><label>Notes<textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Size, strength, deadline, or anything else I should know…" /></label><button className="primary" disabled={busy}>{busy ? 'Sending…' : 'Submit request'}<Send size={17} /></button></div>
     {message && <div className={`notice ${message.includes('sent') ? 'success' : 'error'}`}>{message}</div>}
   </form>;
@@ -122,11 +127,21 @@ function NewOrder({ onCreated, pricing }) {
 
 function PriceEditor({ order, onUpdate }) {
   return <label className="weight-editor">
-    <span className="sr-only">Estimated weight in grams</span>
+    <span className="sr-only">Estimated weight per print in grams</span>
     <span className="weight-input"><input type="number" min="0.1" step="0.1" defaultValue={order.estimatedWeightG || ''} placeholder="0" onBlur={event => {
       const value = event.target.value ? Number(event.target.value) : null;
       if (value !== Number(order.estimatedWeightG || 0)) onUpdate(order.id, { estimatedWeightG: value });
     }} /><small>g</small></span>
+  </label>;
+}
+
+function PrintTimeEditor({ order, onUpdate }) {
+  return <label className="weight-editor">
+    <span className="sr-only">Print time per print in hours</span>
+    <span className="weight-input"><input type="number" min="0.1" step="0.1" defaultValue={order.estimatedPrintTimeMinutes ? (Number(order.estimatedPrintTimeMinutes) / 60).toFixed(2) : ''} placeholder="0" onBlur={event => {
+      const minutes = event.target.value ? Math.round(Number(event.target.value) * 60) : null;
+      if (minutes !== Number(order.estimatedPrintTimeMinutes || 0)) onUpdate(order.id, { estimatedPrintTimeMinutes: minutes });
+    }} /><small>h</small></span>
   </label>;
 }
 
@@ -137,7 +152,8 @@ function PricingSettings({ pricing, onSave }) {
   useEffect(() => setForm(pricing), [pricing]);
   if (!form) return null;
   const petgCost = 80 / 1000 * Number(form.petgCostPerKg || 0);
-  const petgProfit = petgCost * Number(form.profitMarginPercent || 0) / 100;
+  const exampleMachineCost = 2 * Number(form.machineRatePerHour || 0);
+  const petgProfit = (petgCost + exampleMachineCost) * Number(form.profitMarginPercent || 0) / 100;
   function change(key, value) { setForm(current => ({ ...current, [key]: value })); }
   function toggleStock(key, item) { setForm(current => ({ ...current, [key]: current[key].includes(item) ? current[key].filter(value => value !== item) : [...current[key], item] })); }
   async function submit(event) {
@@ -152,11 +168,12 @@ function PricingSettings({ pricing, onSave }) {
     <div className="pricing-heading"><span className="settings-icon"><Settings2 size={20} /></span><div><h2>Pricing settings</h2><p>Set your material cost and the profit added on top.</p></div></div>
     <div className="pricing-fields">
       {materials.map(([key, label]) => <label key={key}>{label} cost<input required type="number" min="0" step="1" value={form[key]} onChange={event => change(key, event.target.value)} /><small>kr per kg</small></label>)}
-      <label>Profit margin<input required type="number" min="0" max="1000" step="0.1" value={form.profitMarginPercent} onChange={event => change('profitMarginPercent', event.target.value)} /><small>% added to material cost</small></label>
+      <label>Profit margin<input required type="number" min="0" max="1000" step="0.1" value={form.profitMarginPercent} onChange={event => change('profitMarginPercent', event.target.value)} /><small>% added to material + time</small></label>
       <label>Default infill<input required type="number" min="0" max="100" step="1" value={form.defaultInfillPercent} onChange={event => change('defaultInfillPercent', event.target.value)} /><small>% for file estimates</small></label>
+      <label>Machine time<input required type="number" min="0" step="0.5" value={form.machineRatePerHour} onChange={event => change('machineRatePerHour', event.target.value)} /><small>kr per print hour</small></label>
     </div>
     <div className="inventory-settings"><div><strong>Materials in stock</strong><span>{MATERIALS.map(material => <label className="stock-toggle" key={material}><input type="checkbox" checked={form.availableMaterials.includes(material)} onChange={() => toggleStock('availableMaterials', material)} /><span>{material}</span></label>)}</span></div><div><strong>Colours in stock</strong><span>{COLOURS.map(colour => <label className="stock-toggle" key={colour}><input type="checkbox" checked={form.availableColours.includes(colour)} onChange={() => toggleStock('availableColours', colour)} /><span>{colour}</span></label>)}</span></div></div>
-    <div className="price-example"><div><small>Example · 80 g PETG</small><strong>{petgCost.toFixed(2)} kr material + {petgProfit.toFixed(2)} kr profit</strong></div><span>{(petgCost + petgProfit).toFixed(2)} kr</span></div>
+    <div className="price-example"><div><small>Example · 80 g PETG · 2 hours</small><strong>{petgCost.toFixed(2)} material + {exampleMachineCost.toFixed(2)} time + {petgProfit.toFixed(2)} profit</strong></div><span>{(petgCost + exampleMachineCost + petgProfit).toFixed(2)} kr</span></div>
     <div className="pricing-actions">{message && <span className={message.includes('saved') ? 'saved' : 'save-error'}>{message}</span>}<button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save pricing & stock'}<Save size={17} /></button></div>
   </form>;
 }
@@ -164,10 +181,10 @@ function PricingSettings({ pricing, onSave }) {
 function Orders({ orders, admin, onUpdate, title = 'Recent orders' }) {
   if (!orders.length) return <section className="orders-panel"><div className="section-head"><h2>{title}</h2></div><div className="empty"><FileBox size={28} /><strong>No print requests yet</strong><span>Your submitted orders will show up here.</span></div></section>;
   return <section className="orders-panel"><div className="section-head"><h2>{title}</h2><div className="section-meta">{admin && <strong>Enter sliced weight to calculate</strong>}<span>{orders.length} {orders.length === 1 ? 'request' : 'requests'}</span></div></div><div className="order-list">
-    <div className={`order-row order-head ${admin ? 'admin-row' : ''}`}><span>Order</span><span>Print</span>{admin && <span>Requested by</span>}<span>Material</span>{admin && <span>Weight</span>}{admin && <span>Cost + profit</span>}<span>Price</span><span>Status</span><span>Updated</span><span /></div>
+    <div className={`order-row order-head ${admin ? 'admin-row' : ''}`}><span>Order</span><span>Print</span>{admin && <span>Requested by</span>}<span>Material</span>{admin && <span>Weight each</span>}{admin && <span>Time each</span>}{admin && <span>Costs</span>}<span>Price</span><span>Status</span><span>Updated</span><span /></div>
     {orders.map(order => { const Icon = statusIcons[order.status] || Clock3; return <div className={`order-row ${admin ? 'admin-row' : ''}`} key={order.id}>
       <span className="order-id"><FileBox size={18} />#{order.id.slice(-6).toUpperCase()}</span><span><strong>{order.name}</strong><small>{order.colour} · Qty {order.quantity}</small></span>{admin && <span><strong>{order.userName}</strong><small>{order.userEmail}</small></span>}<span>{order.material}</span>
-      {admin && <span><PriceEditor order={order} onUpdate={onUpdate} />{order.weightSource && <small className="weight-source">{order.weightSource === 'file_estimate' ? 'File estimate' : order.weightSource === 'admin' ? 'Admin verified' : 'Customer entered'}</small>}</span>}{admin && <span className="price-breakdown">{order.materialCostNok ? <><strong>{Number(order.materialCostNok).toFixed(2)} kr</strong><small>+ {Number(order.profitAmountNok).toFixed(2)} kr</small></> : '—'}</span>}<span className="price">{order.quotedPriceNok ? `${Number(order.quotedPriceNok).toFixed(2)} kr` : '—'}</span>
+      {admin && <span><PriceEditor order={order} onUpdate={onUpdate} />{order.weightSource && <small className="weight-source">{order.weightSource === 'file_estimate' ? 'File estimate' : order.weightSource === 'admin' ? 'Admin verified' : 'Customer entered'}</small>}</span>}{admin && <span><PrintTimeEditor order={order} onUpdate={onUpdate} />{order.printTimeSource && <small className="weight-source">{order.printTimeSource === 'admin' ? 'Admin verified' : 'Customer entered'}</small>}</span>}{admin && <span className="price-breakdown">{order.materialCostNok || order.machineCostNok ? <><strong>{Number(order.materialCostNok || 0).toFixed(2)} material</strong><small>+ {Number(order.machineCostNok || 0).toFixed(2)} time</small><small>+ {Number(order.profitAmountNok || 0).toFixed(2)} profit</small></> : '—'}</span>}<span className="price">{order.quotedPriceNok ? `${Number(order.quotedPriceNok).toFixed(2)} kr` : '—'}</span>
       <span>{admin ? <select className={`status ${order.status.toLowerCase()}`} value={order.status} onChange={e => onUpdate(order.id, { status: e.target.value })}>{STATUSES.map(x => <option key={x}>{x}</option>)}</select> : <span className={`status ${order.status.toLowerCase()}`}><Icon size={15} />{order.status}</span>}</span>
       <span>{new Date(order.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span><span className="actions">{order.fileName && <button title="Download model file" onClick={() => downloadOrderFile(order)}><Download size={18} /></button>}{order.link && <a title="Open model link" href={order.link} target="_blank" rel="noreferrer"><ChevronRight size={19} /></a>}</span>
     </div>; })}</div></section>;

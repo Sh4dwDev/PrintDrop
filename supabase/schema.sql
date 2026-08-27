@@ -15,6 +15,7 @@ create table public.pricing_settings (
   abs_cost_per_kg numeric(10,2) not null default 300 check (abs_cost_per_kg >= 0),
   profit_margin_percent numeric(7,2) not null default 15 check (profit_margin_percent between 0 and 1000),
   default_infill_percent numeric(5,2) not null default 15 check (default_infill_percent between 0 and 100),
+  machine_rate_per_hour numeric(10,2) not null default 10 check (machine_rate_per_hour >= 0),
   available_materials text[] not null default array['PLA', 'PETG', 'TPU', 'ABS'] check (cardinality(available_materials) > 0),
   available_colours text[] not null default array['Black', 'White', 'Grey', 'Orange', 'Blue', 'Green', 'Other'] check (cardinality(available_colours) > 0),
   updated_at timestamptz not null default now()
@@ -37,7 +38,10 @@ create table public.orders (
   file_path text,
   estimated_weight_g numeric(10,2) check (estimated_weight_g is null or estimated_weight_g > 0),
   weight_source text check (weight_source is null or weight_source in ('customer', 'file_estimate', 'admin')),
+  estimated_print_time_minutes numeric(10,2) check (estimated_print_time_minutes is null or estimated_print_time_minutes > 0),
+  print_time_source text check (print_time_source is null or print_time_source in ('customer', 'admin')),
   material_cost_nok numeric(10,2),
+  machine_cost_nok numeric(10,2),
   profit_amount_nok numeric(10,2),
   quoted_price_nok numeric(10,2),
   status text not null default 'Reviewing' check (status in ('Reviewing', 'Quoted', 'Printing', 'Ready', 'Completed', 'Declined')),
@@ -56,8 +60,9 @@ declare
   settings public.pricing_settings;
   cost_per_kg numeric;
 begin
-  if new.estimated_weight_g is null then
+  if new.estimated_weight_g is null and new.estimated_print_time_minutes is null then
     new.material_cost_nok := null;
+    new.machine_cost_nok := null;
     new.profit_amount_nok := null;
     new.quoted_price_nok := null;
     return new;
@@ -69,9 +74,10 @@ begin
     when 'TPU' then settings.tpu_cost_per_kg
     when 'ABS' then settings.abs_cost_per_kg
   end;
-  new.material_cost_nok := round(new.estimated_weight_g / 1000 * cost_per_kg, 2);
-  new.profit_amount_nok := round(new.material_cost_nok * settings.profit_margin_percent / 100, 2);
-  new.quoted_price_nok := new.material_cost_nok + new.profit_amount_nok;
+  new.material_cost_nok := round(coalesce(new.estimated_weight_g, 0) * new.quantity / 1000 * cost_per_kg, 2);
+  new.machine_cost_nok := round(coalesce(new.estimated_print_time_minutes, 0) / 60 * new.quantity * settings.machine_rate_per_hour, 2);
+  new.profit_amount_nok := round((new.material_cost_nok + new.machine_cost_nok) * settings.profit_margin_percent / 100, 2);
+  new.quoted_price_nok := new.material_cost_nok + new.machine_cost_nok + new.profit_amount_nok;
   return new;
 end;
 $$;

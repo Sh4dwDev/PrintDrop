@@ -1,11 +1,11 @@
 import { supabase } from './supabase';
 
 function mapOrder(row) {
-  return { id: row.id, userId: row.user_id, userName: row.user_name, userEmail: row.user_email, name: row.name, link: row.model_link, material: row.material, colour: row.colour, quantity: row.quantity, notes: row.notes, fileName: row.file_name, filePath: row.file_path, estimatedWeightG: row.estimated_weight_g, weightSource: row.weight_source, materialCostNok: row.material_cost_nok, profitAmountNok: row.profit_amount_nok, quotedPriceNok: row.quoted_price_nok, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, userId: row.user_id, userName: row.user_name, userEmail: row.user_email, name: row.name, link: row.model_link, material: row.material, colour: row.colour, quantity: row.quantity, notes: row.notes, fileName: row.file_name, filePath: row.file_path, estimatedWeightG: row.estimated_weight_g, weightSource: row.weight_source, estimatedPrintTimeMinutes: row.estimated_print_time_minutes, printTimeSource: row.print_time_source, materialCostNok: row.material_cost_nok, machineCostNok: row.machine_cost_nok, profitAmountNok: row.profit_amount_nok, quotedPriceNok: row.quoted_price_nok, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 function mapPricing(row) {
-  return { plaCostPerKg: row.pla_cost_per_kg, petgCostPerKg: row.petg_cost_per_kg, tpuCostPerKg: row.tpu_cost_per_kg, absCostPerKg: row.abs_cost_per_kg, profitMarginPercent: row.profit_margin_percent, defaultInfillPercent: row.default_infill_percent, availableMaterials: row.available_materials || ['PLA', 'PETG', 'TPU', 'ABS'], availableColours: row.available_colours || ['Black', 'White', 'Grey', 'Orange', 'Blue', 'Green', 'Other'] };
+  return { plaCostPerKg: row.pla_cost_per_kg, petgCostPerKg: row.petg_cost_per_kg, tpuCostPerKg: row.tpu_cost_per_kg, absCostPerKg: row.abs_cost_per_kg, profitMarginPercent: row.profit_margin_percent, defaultInfillPercent: row.default_infill_percent, machineRatePerHour: row.machine_rate_per_hour ?? 10, availableMaterials: row.available_materials || ['PLA', 'PETG', 'TPU', 'ABS'], availableColours: row.available_colours || ['Black', 'White', 'Grey', 'Orange', 'Blue', 'Green', 'Other'] };
 }
 
 async function currentUser() {
@@ -42,7 +42,7 @@ export async function request(path, options = {}) {
     const update = {
       pla_cost_per_kg: Number(changes.plaCostPerKg), petg_cost_per_kg: Number(changes.petgCostPerKg),
       tpu_cost_per_kg: Number(changes.tpuCostPerKg), abs_cost_per_kg: Number(changes.absCostPerKg),
-      profit_margin_percent: Number(changes.profitMarginPercent), default_infill_percent: Number(changes.defaultInfillPercent), available_materials: changes.availableMaterials, available_colours: changes.availableColours, updated_at: new Date().toISOString()
+      profit_margin_percent: Number(changes.profitMarginPercent), default_infill_percent: Number(changes.defaultInfillPercent), machine_rate_per_hour: Number(changes.machineRatePerHour), available_materials: changes.availableMaterials, available_colours: changes.availableColours, updated_at: new Date().toISOString()
     };
     const { data, error } = await supabase.from('pricing_settings').update(update).eq('id', true).select().single();
     if (error) throw error;
@@ -59,7 +59,8 @@ export async function request(path, options = {}) {
       if (error) throw error;
     }
     const weight = Number(form.get('estimatedWeightG'));
-    const row = { user_id: user.id, user_name: user.name, user_email: user.email, name: form.get('name'), model_link: form.get('link') || null, material: form.get('material'), colour: form.get('colour'), quantity: Number(form.get('quantity')), notes: form.get('notes') || null, file_name: file?.size ? file.name : null, file_path: filePath, estimated_weight_g: weight > 0 ? weight : null, weight_source: weight > 0 ? (form.get('weightSource') || 'customer') : null };
+    const printMinutes = Number(form.get('printTimeHours') || 0) * 60 + Number(form.get('printTimeMinutes') || 0);
+    const row = { user_id: user.id, user_name: user.name, user_email: user.email, name: form.get('name'), model_link: form.get('link') || null, material: form.get('material'), colour: form.get('colour'), quantity: Number(form.get('quantity')), notes: form.get('notes') || null, file_name: file?.size ? file.name : null, file_path: filePath, estimated_weight_g: weight > 0 ? weight : null, weight_source: weight > 0 ? (form.get('weightSource') || 'customer') : null, estimated_print_time_minutes: printMinutes > 0 ? printMinutes : null, print_time_source: printMinutes > 0 ? 'customer' : null };
     const { data, error } = await supabase.from('orders').insert(row).select().single();
     if (error) { if (filePath) await supabase.storage.from('print-files').remove([filePath]); throw error; }
     return { order: mapOrder(data) };
@@ -77,6 +78,7 @@ export async function request(path, options = {}) {
     const id = path.split('/').pop(); const changes = JSON.parse(options.body); const update = { updated_at: new Date().toISOString() };
     if (changes.status !== undefined) update.status = changes.status;
     if (changes.estimatedWeightG !== undefined) { update.estimated_weight_g = changes.estimatedWeightG || null; update.weight_source = changes.estimatedWeightG ? 'admin' : null; }
+    if (changes.estimatedPrintTimeMinutes !== undefined) { update.estimated_print_time_minutes = changes.estimatedPrintTimeMinutes || null; update.print_time_source = changes.estimatedPrintTimeMinutes ? 'admin' : null; }
     const { data, error } = await supabase.from('orders').update(update).eq('id', id).select().single();
     if (error) throw error;
     return { order: mapOrder(data) };
