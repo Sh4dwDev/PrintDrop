@@ -1,7 +1,11 @@
 import { supabase } from './supabase';
 
 function mapOrder(row) {
-  return { id: row.id, userId: row.user_id, userName: row.user_name, userEmail: row.user_email, name: row.name, link: row.model_link, material: row.material, colour: row.colour, quantity: row.quantity, notes: row.notes, fileName: row.file_name, filePath: row.file_path, estimatedWeightG: row.estimated_weight_g, quotedPriceNok: row.quoted_price_nok, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, userId: row.user_id, userName: row.user_name, userEmail: row.user_email, name: row.name, link: row.model_link, material: row.material, colour: row.colour, quantity: row.quantity, notes: row.notes, fileName: row.file_name, filePath: row.file_path, estimatedWeightG: row.estimated_weight_g, materialCostNok: row.material_cost_nok, profitAmountNok: row.profit_amount_nok, quotedPriceNok: row.quoted_price_nok, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at };
+}
+
+function mapPricing(row) {
+  return { plaCostPerKg: row.pla_cost_per_kg, petgCostPerKg: row.petg_cost_per_kg, tpuCostPerKg: row.tpu_cost_per_kg, absCostPerKg: row.abs_cost_per_kg, profitMarginPercent: row.profit_margin_percent };
 }
 
 async function currentUser() {
@@ -28,6 +32,24 @@ export async function request(path, options = {}) {
   }
   if (path === '/auth/me') return { user: await currentUser() };
   if (path === '/auth/logout') { await supabase.auth.signOut(); return {}; }
+  if (path === '/pricing' && !options.method) {
+    const { data, error } = await supabase.from('pricing_settings').select('*').eq('id', true).single();
+    if (error) throw error;
+    return { pricing: mapPricing(data) };
+  }
+  if (path === '/admin/pricing' && options.method === 'PATCH') {
+    const changes = JSON.parse(options.body);
+    const update = {
+      pla_cost_per_kg: Number(changes.plaCostPerKg), petg_cost_per_kg: Number(changes.petgCostPerKg),
+      tpu_cost_per_kg: Number(changes.tpuCostPerKg), abs_cost_per_kg: Number(changes.absCostPerKg),
+      profit_margin_percent: Number(changes.profitMarginPercent), updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase.from('pricing_settings').update(update).eq('id', true).select().single();
+    if (error) throw error;
+    const { error: recalculateError } = await supabase.from('orders').update({ updated_at: new Date().toISOString() }).not('estimated_weight_g', 'is', null);
+    if (recalculateError) throw recalculateError;
+    return { pricing: mapPricing(data) };
+  }
   if (path === '/orders' && options.method === 'POST') {
     const form = options.body; const user = await currentUser(); const file = form.get('model'); let filePath = null;
     if (file?.size) {

@@ -28,6 +28,12 @@ Open `http://localhost:5173`. The first account you register gets admin access; 
 
 In Supabase, add the final Vercel URL to **Authentication → URL Configuration → Site URL**. If email confirmation is enabled, also add it to the redirect URL list.
 
+## Pricing
+
+The admin view includes pricing settings for each material and a profit margin. Defaults are **300 kr/kg** and **15%**. Enter the total sliced weight on an order to see the material cost, profit, and customer price.
+
+If your database was created before pricing settings were added, run `supabase/migrations/003_add_pricing_settings.sql` once in the Supabase SQL Editor.
+
 ## Security and storage
 
 The browser only receives Supabase's publishable key. Row Level Security keeps customer orders private, while the admin can see all requests. The `print-files` bucket is private and downloads use short-lived signed links.

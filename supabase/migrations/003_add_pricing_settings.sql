@@ -1,0 +1,62 @@
+-- Run this once if you already installed an earlier PrintDrop schema.
+create table if not exists public.pricing_settings (
+  id boolean primary key default true check (id),
+  pla_cost_per_kg numeric(10,2) not null default 300 check (pla_cost_per_kg >= 0),
+  petg_cost_per_kg numeric(10,2) not null default 300 check (petg_cost_per_kg >= 0),
+  tpu_cost_per_kg numeric(10,2) not null default 300 check (tpu_cost_per_kg >= 0),
+  abs_cost_per_kg numeric(10,2) not null default 300 check (abs_cost_per_kg >= 0),
+  profit_margin_percent numeric(7,2) not null default 15 check (profit_margin_percent between 0 and 1000),
+  updated_at timestamptz not null default now()
+);
+
+insert into public.pricing_settings (id) values (true) on conflict (id) do nothing;
+
+alter table public.orders drop column if exists quoted_price_nok;
+alter table public.orders
+  add column if not exists material_cost_nok numeric(10,2),
+  add column if not exists profit_amount_nok numeric(10,2),
+  add column if not exists quoted_price_nok numeric(10,2);
+
+create or replace function public.calculate_order_price()
+returns trigger language plpgsql security definer set search_path = ''
+as $$
+declare
+  settings public.pricing_settings;
+  cost_per_kg numeric;
+begin
+  if new.estimated_weight_g is null then
+    new.material_cost_nok := null;
+    new.profit_amount_nok := null;
+    new.quoted_price_nok := null;
+    return new;
+  end if;
+  select * into settings from public.pricing_settings where id = true;
+  cost_per_kg := case new.material
+    when 'PLA' then settings.pla_cost_per_kg
+    when 'PETG' then settings.petg_cost_per_kg
+    when 'TPU' then settings.tpu_cost_per_kg
+    when 'ABS' then settings.abs_cost_per_kg
+  end;
+  new.material_cost_nok := round(new.estimated_weight_g / 1000 * cost_per_kg, 2);
+  new.profit_amount_nok := round(new.material_cost_nok * settings.profit_margin_percent / 100, 2);
+  new.quoted_price_nok := new.material_cost_nok + new.profit_amount_nok;
+  return new;
+end;
+$$;
+
+drop trigger if exists calculate_order_price on public.orders;
+create trigger calculate_order_price before insert or update on public.orders
+for each row execute procedure public.calculate_order_price();
+
+alter table public.pricing_settings enable row level security;
+revoke all on public.pricing_settings from anon, authenticated;
+grant select, update on public.pricing_settings to authenticated;
+
+drop policy if exists "signed in users view pricing" on public.pricing_settings;
+create policy "signed in users view pricing" on public.pricing_settings
+for select to authenticated using (true);
+drop policy if exists "admins update pricing" on public.pricing_settings;
+create policy "admins update pricing" on public.pricing_settings
+for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
+
+update public.orders set updated_at = updated_at where estimated_weight_g is not null;

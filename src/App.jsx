@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Check, ChevronRight, Clock3, Download, FileBox, Grid2X2, Link2, LogOut, Menu, PackageCheck, Plus, Printer, Send, ShieldCheck, Upload, UserRound, X } from 'lucide-react';
+import { Box, Check, ChevronRight, Clock3, Download, FileBox, Grid2X2, Link2, LogOut, Menu, PackageCheck, Plus, Printer, Save, Send, Settings2, ShieldCheck, Upload, UserRound, X } from 'lucide-react';
 import { downloadOrderFile, request } from './api';
 import { isConfigured } from './supabase';
 
@@ -92,25 +92,54 @@ function PriceEditor({ order, onUpdate }) {
   </label>;
 }
 
+function PricingSettings({ pricing, onSave }) {
+  const [form, setForm] = useState(pricing);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setForm(pricing), [pricing]);
+  if (!form) return null;
+  const petgCost = 80 / 1000 * Number(form.petgCostPerKg || 0);
+  const petgProfit = petgCost * Number(form.profitMarginPercent || 0) / 100;
+  function change(key, value) { setForm(current => ({ ...current, [key]: value })); }
+  async function submit(event) {
+    event.preventDefault(); setMessage(''); setBusy(true);
+    try { await onSave(form); setMessage('Pricing settings saved.'); }
+    catch (error) { setMessage(error.message); }
+    finally { setBusy(false); }
+  }
+  const materials = [['plaCostPerKg', 'PLA'], ['petgCostPerKg', 'PETG'], ['tpuCostPerKg', 'TPU'], ['absCostPerKg', 'ABS']];
+  return <form className="pricing-panel" onSubmit={submit}>
+    <div className="pricing-heading"><span className="settings-icon"><Settings2 size={20} /></span><div><h2>Pricing settings</h2><p>Set your material cost and the profit added on top.</p></div></div>
+    <div className="pricing-fields">
+      {materials.map(([key, label]) => <label key={key}>{label} cost<input required type="number" min="0" step="1" value={form[key]} onChange={event => change(key, event.target.value)} /><small>kr per kg</small></label>)}
+      <label>Profit margin<input required type="number" min="0" max="1000" step="0.1" value={form.profitMarginPercent} onChange={event => change('profitMarginPercent', event.target.value)} /><small>% added to material cost</small></label>
+    </div>
+    <div className="price-example"><div><small>Example · 80 g PETG</small><strong>{petgCost.toFixed(2)} kr material + {petgProfit.toFixed(2)} kr profit</strong></div><span>{(petgCost + petgProfit).toFixed(2)} kr</span></div>
+    <div className="pricing-actions">{message && <span className={message.includes('saved') ? 'saved' : 'save-error'}>{message}</span>}<button className="primary" disabled={busy}>{busy ? 'Saving…' : 'Save pricing'}<Save size={17} /></button></div>
+  </form>;
+}
+
 function Orders({ orders, admin, onUpdate, title = 'Recent orders' }) {
   if (!orders.length) return <section className="orders-panel"><div className="section-head"><h2>{title}</h2></div><div className="empty"><FileBox size={28} /><strong>No print requests yet</strong><span>Your submitted orders will show up here.</span></div></section>;
-  return <section className="orders-panel"><div className="section-head"><h2>{title}</h2><div className="section-meta">{admin && <strong>300 kr/kg · enter sliced weight</strong>}<span>{orders.length} {orders.length === 1 ? 'request' : 'requests'}</span></div></div><div className="order-list">
-    <div className={`order-row order-head ${admin ? 'admin-row' : ''}`}><span>Order</span><span>Print</span>{admin && <span>Customer</span>}<span>Material</span>{admin && <span>Weight</span>}<span>Price</span><span>Status</span><span>Updated</span><span /></div>
+  return <section className="orders-panel"><div className="section-head"><h2>{title}</h2><div className="section-meta">{admin && <strong>Enter sliced weight to calculate</strong>}<span>{orders.length} {orders.length === 1 ? 'request' : 'requests'}</span></div></div><div className="order-list">
+    <div className={`order-row order-head ${admin ? 'admin-row' : ''}`}><span>Order</span><span>Print</span>{admin && <span>Requested by</span>}<span>Material</span>{admin && <span>Weight</span>}{admin && <span>Cost + profit</span>}<span>Price</span><span>Status</span><span>Updated</span><span /></div>
     {orders.map(order => { const Icon = statusIcons[order.status] || Clock3; return <div className={`order-row ${admin ? 'admin-row' : ''}`} key={order.id}>
       <span className="order-id"><FileBox size={18} />#{order.id.slice(-6).toUpperCase()}</span><span><strong>{order.name}</strong><small>{order.colour} · Qty {order.quantity}</small></span>{admin && <span><strong>{order.userName}</strong><small>{order.userEmail}</small></span>}<span>{order.material}</span>
-      {admin && <span><PriceEditor order={order} onUpdate={onUpdate} /></span>}<span className="price">{order.quotedPriceNok ? `${Number(order.quotedPriceNok).toFixed(2)} kr` : '—'}</span>
+      {admin && <span><PriceEditor order={order} onUpdate={onUpdate} /></span>}{admin && <span className="price-breakdown">{order.materialCostNok ? <><strong>{Number(order.materialCostNok).toFixed(2)} kr</strong><small>+ {Number(order.profitAmountNok).toFixed(2)} kr</small></> : '—'}</span>}<span className="price">{order.quotedPriceNok ? `${Number(order.quotedPriceNok).toFixed(2)} kr` : '—'}</span>
       <span>{admin ? <select className={`status ${order.status.toLowerCase()}`} value={order.status} onChange={e => onUpdate(order.id, { status: e.target.value })}>{STATUSES.map(x => <option key={x}>{x}</option>)}</select> : <span className={`status ${order.status.toLowerCase()}`}><Icon size={15} />{order.status}</span>}</span>
       <span>{new Date(order.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span><span className="actions">{order.fileName && <button title="Download model file" onClick={() => downloadOrderFile(order)}><Download size={18} /></button>}{order.link && <a title="Open model link" href={order.link} target="_blank" rel="noreferrer"><ChevronRight size={19} /></a>}</span>
     </div>; })}</div></section>;
 }
 
 export function App() {
-  const [user, setUser] = useState(null); const [loading, setLoading] = useState(true); const [orders, setOrders] = useState([]); const [active, setActive] = useState('dashboard'); const [menu, setMenu] = useState(false);
+  const [user, setUser] = useState(null); const [loading, setLoading] = useState(true); const [orders, setOrders] = useState([]); const [pricing, setPricing] = useState(null); const [active, setActive] = useState('dashboard'); const [menu, setMenu] = useState(false);
   async function loadOrders(currentUser = user) { if (!currentUser) return; try { setOrders((await request(currentUser.role === 'admin' && active === 'admin' ? '/admin/orders' : '/orders')).orders); } catch {} }
   useEffect(() => { if (!isConfigured) { setLoading(false); return; } request('/auth/me').then(x => setUser(x.user)).catch(() => {}).finally(() => setLoading(false)); }, []);
   useEffect(() => { loadOrders(); }, [user, active]);
+  useEffect(() => { if (user?.role === 'admin' && active === 'admin') request('/pricing').then(result => setPricing(result.pricing)).catch(() => {}); }, [user, active]);
   async function logout() { await request('/auth/logout'); setUser(null); }
   async function update(id, changes) { await request(`/admin/orders/${id}`, { method: 'PATCH', body: JSON.stringify(changes) }); loadOrders(); }
+  async function savePricing(changes) { const result = await request('/admin/pricing', { method: 'PATCH', body: JSON.stringify(changes) }); setPricing(result.pricing); loadOrders(); }
   if (!isConfigured) return <main className="setup-page"><Logo /><section><h1>Connect Supabase</h1><p>Add these two environment variables to run PrintDrop:</p><code>VITE_SUPABASE_URL</code><code>VITE_SUPABASE_PUBLISHABLE_KEY</code><p className="setup-note">Then run <strong>supabase/schema.sql</strong> in your Supabase SQL Editor.</p></section></main>;
   if (loading) return <div className="loader"><Printer className="spin" /> Loading PrintDrop…</div>;
   if (!user) return <Auth onAuth={setUser} />;
@@ -119,6 +148,6 @@ export function App() {
     <header><button className="menu-button" onClick={() => setMenu(true)}><Menu /></button><div><h1>{active === 'admin' ? 'Print queue' : active === 'orders' ? 'My orders' : active === 'new' ? 'New print request' : `Welcome back, ${user.name.split(' ')[0]}.`}</h1><p>{active === 'admin' ? 'Review requests, download files, and keep everyone updated.' : active === 'dashboard' ? 'Ready to bring another idea to life?' : active === 'orders' ? 'Everything you have sent, in one place.' : 'Upload a model or send me the link.'}</p></div><div className="account"><UserRound size={19} /><span><strong>{user.name}</strong><small>{user.role}</small></span></div></header>
     {showForm && <NewOrder onCreated={() => { loadOrders(); if (active === 'new') setActive('orders'); }} />}
     {(active === 'dashboard' || active === 'orders') && <Orders orders={active === 'dashboard' ? orders.slice(0, 4) : orders} title={active === 'dashboard' ? 'Recent orders' : 'All orders'} />}
-    {active === 'admin' && <Orders orders={orders} admin onUpdate={update} title="All print requests" />}
+    {active === 'admin' && <><PricingSettings pricing={pricing} onSave={savePricing} /><Orders orders={orders} admin onUpdate={update} title="All print requests" /></>}
   </main></div>;
 }
