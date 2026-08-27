@@ -32,9 +32,9 @@ In Supabase, add the final Vercel URL to **Authentication → URL Configuration 
 
 The admin view includes pricing settings for each material and a profit margin. Defaults are **300 kr/kg** and **15%**. Enter the total sliced weight on an order to see the material cost, profit, and customer price.
 
-If your database was created before pricing settings were added, run `supabase/migrations/003_add_pricing_settings.sql` once in the Supabase SQL Editor.
+For an existing database, run `supabase/migrations/005_complete_pricing_and_weight.sql` once in the Supabase SQL Editor. It includes the earlier pricing and privacy upgrades too.
 
-For existing databases, also run `supabase/migrations/004_lock_down_order_privacy.sql` to verify that customers can only access their own requests. Admins can still access every request from **Admin view**.
+Customers can enter the total sliced weight themselves. STL and OBJ uploads get a rough automatic estimate using model volume, material density, and the admin's default infill setting. The estimate remains editable because final weight depends on slicer settings. Direct STL/OBJ links are estimated when the source website permits browser access; ordinary Printables, Thingiverse, and MakerWorld pages cannot expose a reliable sliced weight.
 
 ## Security and storage
 

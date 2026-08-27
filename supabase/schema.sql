@@ -14,6 +14,7 @@ create table public.pricing_settings (
   tpu_cost_per_kg numeric(10,2) not null default 300 check (tpu_cost_per_kg >= 0),
   abs_cost_per_kg numeric(10,2) not null default 300 check (abs_cost_per_kg >= 0),
   profit_margin_percent numeric(7,2) not null default 15 check (profit_margin_percent between 0 and 1000),
+  default_infill_percent numeric(5,2) not null default 15 check (default_infill_percent between 0 and 100),
   updated_at timestamptz not null default now()
 );
 
@@ -33,6 +34,7 @@ create table public.orders (
   file_name text,
   file_path text,
   estimated_weight_g numeric(10,2) check (estimated_weight_g is null or estimated_weight_g > 0),
+  weight_source text check (weight_source is null or weight_source in ('customer', 'file_estimate', 'admin')),
   material_cost_nok numeric(10,2),
   profit_amount_nok numeric(10,2),
   quoted_price_nok numeric(10,2),
